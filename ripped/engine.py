@@ -194,6 +194,10 @@ class Runner:
         self._aborted = False
         out = Path(self._output_path())
         base = Path(self.hid.work_dir) if self.hid.work_dir else out.parent
+        if base.exists() and not os.access(base, os.W_OK):
+            # Read-only folder (e.g. a root-owned mount point): use the cache instead.
+            base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "ripped"
+            base.mkdir(parents=True, exist_ok=True)
         self.work = base / f".{out.stem}.ripped"
 
     # ------------------------------------------------------------ helpers
@@ -940,9 +944,8 @@ class Runner:
 
     def preview_command(self) -> list[str]:
         """Analyze (crop/interlacing) and build an mpv/ffplay command."""
-        self.work.mkdir(parents=True, exist_ok=True)
-        src, info = self._prepare_source()
-        ana = self._analyze(src, info)
+        inp, info, _ = self.preview_source()
+        ana = self._analyze(inp, info)
         adv = self.adv
         cap = max(160, ana.crop.w // 16 * 16)
         w = {"auto": cap, "fixed": adv.width, "max": min(cap, adv.width),
@@ -965,14 +968,16 @@ class Runner:
                     cmd.append("--sub-forced-events-only=yes")
             else:
                 cmd.append("--sid=no")
-            return [*cmd, src]
+            if inp[0] == "-f":  # straight from the DVD via ffmpeg's dvdvideo demuxer
+                cmd += ["--demuxer-lavf-format=dvdvideo", f"--demuxer-lavf-o=title={job.dvd_title}"]
+            return [*cmd, inp[-1]]
         return ["ffplay", "-hide_banner", "-an", "-sn", "-window_title",
-                "Ripped – preview", "-vf", ",".join(vf), src]
+                "Ripped – preview", "-vf", ",".join(vf), *inp]
 
     # ------------------------------------------------- crop preview
 
     def preview_source(self) -> tuple[list[str], MediaInfo, Stream]:
-        """Input for the crop preview, without demuxing the whole DVD title."""
+        """Input for the previews, without demuxing the whole DVD title."""
         job = self.job
         cached = self.work / "source.mkv"
         marker = self.work / "source.ok"

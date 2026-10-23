@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import subprocess
 import threading
 from datetime import datetime
@@ -511,12 +512,21 @@ class MainWindow(Gtk.ApplicationWindow):
         if dvd:
             root = Path(media.dvd_root(path))
             name = root.stem if root.suffix.lower() == ".iso" else root.name
-            out = root.parent / f"{name}{ext}"
+            # Next to the disc, or inside the DVD folder if its parent is read-only
+            # (e.g. a DVD copied straight into a mount point like /mnt/downloads).
+            dirs = [root.parent] + ([root] if root.is_dir() else [])
+            out = Path(name + ext)
         else:
+            dirs = [p.parent]
             out = p.with_suffix(ext)
             if out == p:
                 out = p.with_name(f"{p.stem}.ripped{ext}")
-        self.output_entry.set_text(str(out))
+            out = Path(out.name)
+        videos = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_VIDEOS)
+        dirs += [Path(videos)] if videos else []
+        dirs.append(Path.home())
+        folder = next(d for d in dirs if d.is_dir() and os.access(d, os.W_OK))
+        self.output_entry.set_text(str(folder / out))
 
     def _choose_output(self) -> None:
         d = self._file_dialog("Save as")
@@ -668,6 +678,12 @@ class MainWindow(Gtk.ApplicationWindow):
             return None
         adv = copy.deepcopy(self.settings.advanced)
         out = str(Path(out).with_suffix("." + adv.container))
+        folder = Path(out).parent
+        if not folder.is_dir() or not os.access(folder, os.W_OK):
+            self._alert("Cannot write the output file",
+                        f"You don't have permission to write to\n{folder}\n\n"
+                        "Choose another output folder.")
+            return None
         info = self.info
         a1 = self.audio1_dd.get_selected()
         a2 = self.audio2_dd.get_selected()
