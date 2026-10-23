@@ -1009,18 +1009,27 @@ class Runner:
         if media.which("mpv"):
             cmd = ["mpv", "--force-window=yes", "--title=Ripped – preview",
                    "--aid=no", f"--vf=lavfi=[{','.join(vf)}]"]
+            # Straight from the DVD: mpv's own dvdnav input. Seeking through ffmpeg's
+            # dvdvideo demuxer crashes mpv, and dvdnav numbers titles from 0.
+            dvd = inp[0] == "-f"
             if job.ext_subs_file:
                 cmd.append(f"--sub-file={job.ext_subs_file}")
             elif job.subtitle is not None and job.subtitle >= 0:
-                ids = [s.index for s in info.subtitles]
+                subs = info.subtitles
+                ids = [s.index for s in subs]
                 if job.subtitle in ids:
-                    cmd.append(f"--sid={ids.index(job.subtitle) + 1}")
+                    s = subs[ids.index(job.subtitle)]
+                    # dvdnav lists subpicture streams in another order than ffmpeg.
+                    if dvd and s.lang and s.lang != "und":
+                        cmd.append(f"--slang={s.lang}")
+                    else:
+                        cmd.append(f"--sid={ids.index(job.subtitle) + 1}")
                 if adv.forced_subs_only:
                     cmd.append("--sub-forced-events-only=yes")
             else:
                 cmd.append("--sid=no")
-            if inp[0] == "-f":  # straight from the DVD via ffmpeg's dvdvideo demuxer
-                cmd += ["--demuxer-lavf-format=dvdvideo", f"--demuxer-lavf-o=title={job.dvd_title}"]
+            if dvd:
+                return [*cmd, f"--dvd-device={inp[-1]}", f"dvd://{job.dvd_title - 1}"]
             return [*cmd, inp[-1]]
         return ["ffplay", "-hide_banner", "-an", "-sn", "-window_title",
                 "Ripped – preview", "-vf", ",".join(vf), *inp]
