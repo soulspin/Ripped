@@ -18,7 +18,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 from . import APP_ID, APP_NAME, VERSION, media  # noqa: E402
 from .croppreview import CropPreviewDialog  # noqa: E402
 from .dialogs import AdvancedDialog, HiddenDialog  # noqa: E402
-from .engine import Aborted, Runner  # noqa: E402
+from .engine import Aborted, Runner, estimate_bitrate, quality_to_crf, quality_to_quant  # noqa: E402
 from .jobs import (DATA_DIR, DEFAULT_PRESET, PRESETS, Job, Settings,  # noqa: E402
                    load_queue, save_queue, summary)
 
@@ -58,6 +58,12 @@ CSS = """
 .big-action { padding: 6px 18px; font-weight: 700; }
 .summary-bar { padding: 4px 12px; font-size: 0.9em; }
 .drop-hint { border: 2px dashed @theme_selected_bg_color; border-radius: 12px; }
+.estimate {
+  padding: 6px 10px; border-radius: 8px;
+  background-color: alpha(currentColor, 0.06);
+}
+.estimate-value { font-weight: 700; font-size: 1.1em; }
+.estimate.warning { background-color: alpha(#e01b24, 0.18); }
 .crop-stage { background-color: black; border-radius: 8px; }
 .crop-status { padding: 8px 14px; border-radius: 8px; }
 """
@@ -91,6 +97,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._refresh_queue()
         self._update_summary()
         self._update_buttons()
+        self._update_estimate()
         self.log(f"{APP_NAME} {VERSION} – XviD/x264 conversion for Linux.")
         if self.jobs:
             self.log(f"Restored {len(self.jobs)} job(s) from the previous session.")
@@ -196,7 +203,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.video_row.append(self._field("Video stream:"))
         self.video_dd = Gtk.DropDown.new_from_strings([])
         self.video_dd.set_hexpand(True)
-        self.video_dd.connect("notify::selected", lambda *_: self._update_stream_info())
+        self.video_dd.connect("notify::selected", lambda *_: (self._update_stream_info(),
+                                                               self._update_estimate()))
         self.video_row.append(self.video_dd)
         body.append(self.video_row)
 
@@ -220,8 +228,10 @@ class MainWindow(Gtk.ApplicationWindow):
         g.attach(self._field("Audio track:"), 0, 0, 1, 1)
         self.audio1_dd = Gtk.DropDown.new_from_strings(["—"])
         self.audio1_dd.set_hexpand(True)
+        self.audio1_dd.connect("notify::selected", lambda *_: self._update_estimate())
         g.attach(self.audio1_dd, 1, 0, 1, 1)
         self.audio2_dd = Gtk.DropDown.new_from_strings(["No second audio track"])
+        self.audio2_dd.connect("notify::selected", lambda *_: self._update_estimate())
         g.attach(self.audio2_dd, 1, 1, 1, 1)
         g.attach(self._field("Subtitle:"), 0, 2, 1, 1)
         self.sub_dd = Gtk.DropDown.new_from_strings(["No subtitles"])
@@ -258,8 +268,22 @@ class MainWindow(Gtk.ApplicationWindow):
         g.attach(self.custom_spin, 1, 1, 1, 1)
         g.attach(self.rb_quality, 0, 2, 1, 1)
         g.attach(self.quality_spin, 1, 2, 1, 1)
+        est = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        est.add_css_class("estimate")
+        self.estimate_box = est
+        self.estimate_value = Gtk.Label(xalign=0)
+        self.estimate_value.add_css_class("estimate-value")
+        self.estimate_detail = Gtk.Label(xalign=0, wrap=True)
+        self.estimate_detail.add_css_class("dim-label")
+        self.estimate_detail.add_css_class("caption")
+        est.append(self.estimate_value)
+        est.append(self.estimate_detail)
+        body.append(est)
         for rb in (self.rb_preset, self.rb_custom, self.rb_quality):
-            rb.connect("toggled", lambda *_: self._sync_size())
+            rb.connect("toggled", lambda *_: (self._sync_size(), self._update_estimate()))
+        self.preset_dd.connect("notify::selected", lambda *_: self._update_estimate())
+        self.custom_spin.connect("value-changed", lambda *_: self._update_estimate())
+        self.quality_spin.connect("value-changed", lambda *_: self._update_estimate())
         self._sync_size()
         right.append(card)
 
@@ -583,6 +607,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.stream_info.set_label("Reading DVD titles …" if dvd else "Analyzing source …")
         self.title_row.set_visible(False)
         self._update_buttons()
+        self._update_estimate()
 
         def work():
             try:
@@ -639,6 +664,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._fill_subs()
         self._update_stream_info()
         self._update_buttons()
+        self._update_estimate()
 
     def _fill_subs(self) -> None:
         items = ["No subtitles"]
@@ -660,6 +686,44 @@ class MainWindow(Gtk.ApplicationWindow):
         i = self.video_dd.get_selected()
         vids = self.info.video
         return vids[i] if 0 <= i < len(vids) else vids[0]
+
+    def _update_estimate(self) -> None:
+        """Show the video bitrate the encoder will get with the current choices."""
+        self.estimate_box.remove_css_class("warning")
+        if not self.info:
+            self.estimate_value.set_label("Video bitrate: –")
+            self.estimate_detail.set_label("Choose a source to see the bitrate.")
+            return
+        job = self._build_job(self.output_entry.get_text().strip() or "out",
+                              self.settings.advanced)
+        if job.size_mode == "quality":
+            q = job.quality
+            self.estimate_value.set_label(f"Single pass at {q} % quality")
+            self.estimate_detail.set_label(
+                f"XviD quantizer {quality_to_quant(q)} · x264 CRF {quality_to_crf(q):.1f} – "
+                "the bitrate follows the content.")
+            return
+        est = estimate_bitrate(job, self.info)
+        if not est:
+            self.estimate_value.set_label("Video bitrate: –")
+            self.estimate_detail.set_label("The source duration is unknown.")
+            return
+        audio = f"audio {est.audio_kbps} kbps" if est.audio_kbps else "no audio"
+        parts = f" · {job.split_parts} parts" if job.split_parts > 1 else ""
+        detail = (f"{audio} · container overhead {est.overhead_kbps} kbps{parts} · "
+                  f"{est.fps:.3f} fps")
+        if est.video_kbps <= 0:
+            self.estimate_box.add_css_class("warning")
+            self.estimate_value.set_label("Video bitrate: too small")
+            self.estimate_detail.set_label(f"Audio and overhead alone exceed {job.size_mb} MB "
+                                           f"({detail}). Pick a larger size or a lower audio bitrate.")
+            return
+        codec = "XviD" if job.advanced.codec == "xvid" else "x264"
+        self.estimate_value.set_label(f"Video bitrate ≈ {est.video_kbps} kbps ({codec}, 2-pass)")
+        if est.video_kbps < 300:
+            self.estimate_box.add_css_class("warning")
+            detail += " – very low, expect a small picture."
+        self.estimate_detail.set_label(detail)
 
     def _sync_size(self) -> None:
         self.preset_dd.set_sensitive(self.rb_preset.get_active())
@@ -684,6 +748,11 @@ class MainWindow(Gtk.ApplicationWindow):
                         f"You don't have permission to write to\n{folder}\n\n"
                         "Choose another output folder.")
             return None
+        return self._build_job(out, adv)
+
+    def _build_job(self, out: str, adv) -> Job:
+        """A job from the current choices, without validation."""
+        assert self.info
         info = self.info
         a1 = self.audio1_dd.get_selected()
         a2 = self.audio2_dd.get_selected()
@@ -825,6 +894,7 @@ class MainWindow(Gtk.ApplicationWindow):
         def applied():
             self.settings.save()
             self._update_summary()
+            self._update_estimate()
             self._fill_subs()
             out = self.output_entry.get_text().strip()
             if out:
@@ -833,7 +903,10 @@ class MainWindow(Gtk.ApplicationWindow):
         AdvancedDialog(self, self.settings.advanced, applied).present()
 
     def _show_hidden(self) -> None:
-        HiddenDialog(self, self.settings.hidden, self.settings.save).present()
+        def applied():
+            self.settings.save()
+            self._update_estimate()
+        HiddenDialog(self, self.settings.hidden, applied).present()
 
     def _crop_preview(self) -> None:
         job = self._job_from_ui()

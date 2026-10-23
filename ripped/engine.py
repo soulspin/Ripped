@@ -178,6 +178,99 @@ class SubPlan:
     soft_streams: list[Stream] = field(default_factory=list)
 
 
+def can_copy(container: str, s: Stream) -> bool:
+    if container == "avi":
+        return s.codec in AVI_COPY
+    if container == "mp4":
+        return s.codec in MP4_COPY
+    return True
+
+
+def plan_audio(job: Job, info: MediaInfo) -> tuple[list[AudioPlan], list[str]]:
+    """Choose codec, bitrate and channels for the selected tracks (no I/O).
+
+    Returns the plans and notes worth logging. Normalization gain is measured later.
+    """
+    adv, hid = job.advanced, job.hidden
+    ids = [i for i in (job.audio1, job.audio2) if i is not None]
+    streams = [info.stream(i) for i in ids if i in [s.index for s in info.audio]]
+    big = job.size_mode == "quality" or job.size_mb > 700
+    plans, notes = [], []
+    for n, s in enumerate(streams):
+        mode, br = adv.audio_mode, adv.audio_bitrate
+        if mode == "auto":
+            mode, br = ("copy", 0) if (n == 0 and big) else ("mp3_abr", 128)
+        if mode == "copy" and not can_copy(adv.container, s):
+            fallback = "aac" if adv.container == "mp4" else "mp3_abr"
+            notes.append(f"{s.codec.upper()} cannot be stored in {adv.container.upper()} – "
+                         f"converting to {fallback.upper()}.")
+            mode, br = fallback, max(br, 128)
+        if mode in ("mp3_abr", "mp3_cbr") and adv.container == "mp4":
+            mode = "aac"
+        if mode == "aac" and adv.container == "avi":
+            mode = "mp3_abr"
+        p = AudioPlan(s, mode, br)
+        if mode != "copy":
+            if hid.mono:
+                p.channels = 1
+                if mode.startswith("mp3"):
+                    p.bitrate = max(32, br // 2)
+            elif mode.startswith("mp3"):
+                p.channels = 2
+            elif s.channels > 6:
+                p.channels = 6
+        plans.append(p)
+    return plans, notes
+
+
+def container_overhead(container: str, frames: float, n_audio: int, duration: float) -> float:
+    if container == "avi":
+        # 24 bytes per video chunk + one audio chunk per frame and track, plus index.
+        return frames * 24 * (1 + n_audio) + 64 * 1024
+    if container == "mkv":
+        return frames * 12 * (1 + n_audio) + duration * 40 + 512 * 1024
+    return frames * 16 * (1 + n_audio) + 512 * 1024
+
+
+@dataclass
+class Estimate:
+    video_kbps: int
+    audio_kbps: int
+    overhead_kbps: int
+    fps: float
+
+
+def estimate_bitrate(job: Job, info: MediaInfo) -> Estimate | None:
+    """The video bitrate a size-mode job will get, before any analysis.
+
+    Uses the same budget as the encoder. The frame rate is a guess until the interlace
+    analysis has run (IVTC can lower it), so the real value may differ slightly.
+    None in quality mode.
+    """
+    if job.size_mode == "quality" or not info.duration or not info.video:
+        return None
+    ids = [s.index for s in info.video]
+    v = info.stream(job.video_index) if job.video_index in ids else info.video[0]
+    hid = job.hidden
+    if hid.reduce_fps:
+        fps = float(Fraction(hid.reduce_fps_rate))
+    elif hid.force_ivtc or (abs(v.fps - 29.97) < 0.05 and abs(v.avg_fps - 23.976) < 0.05
+                            and not hid.force_deint):
+        fps = 24000 / 1001
+    else:
+        fps = v.fps or 25.0
+    duration = info.duration
+    audio, _ = plan_audio(job, info)
+    audio_bytes = sum(a.est_bytes(duration) for a in audio)
+    overhead = container_overhead(job.advanced.container, duration * fps, len(audio), duration)
+    video_bytes = job.size_mb * 1048576 - audio_bytes - overhead
+
+    def kbps(nbytes: float) -> int:
+        return int(nbytes * 8 / duration / 1000)
+
+    return Estimate(kbps(video_bytes), kbps(audio_bytes), kbps(overhead), fps)
+
+
 def _inp(src: str | list[str]) -> list[str]:
     """A path, or ready-made input arguments (e.g. from media.input_args)."""
     return list(src) if isinstance(src, list) else ["-i", src]
@@ -453,49 +546,16 @@ class Runner:
     # ------------------------------------------------------------ audio
 
     def _plan_audio(self, src: str, info: MediaInfo) -> list[AudioPlan]:
-        job, adv = self.job, self.adv
-        ids = [i for i in (job.audio1, job.audio2) if i is not None]
-        streams = [info.stream(i) for i in ids if i in [s.index for s in info.audio]]
-        big = job.size_mode == "quality" or job.size_mb > 700
-        plans = []
-        for n, s in enumerate(streams):
-            mode, br = adv.audio_mode, adv.audio_bitrate
-            if mode == "auto":
-                mode, br = ("copy", 0) if (n == 0 and big) else ("mp3_abr", 128)
-            if mode == "copy" and not self._can_copy(s):
-                fallback = "aac" if adv.container == "mp4" else "mp3_abr"
-                self.log(f"{s.codec.upper()} cannot be stored in {adv.container.upper()} – "
-                         f"converting to {fallback.upper()}.")
-                mode, br = fallback, max(br, 128)
-            if mode in ("mp3_abr", "mp3_cbr") and adv.container == "mp4":
-                mode = "aac"
-            if mode == "aac" and adv.container == "avi":
-                mode = "mp3_abr"
-            p = AudioPlan(s, mode, br)
-            if mode != "copy":
-                if self.hid.mono:
-                    p.channels = 1
-                    if mode.startswith("mp3"):
-                        p.bitrate = max(32, br // 2)
-                elif mode.startswith("mp3"):
-                    p.channels = 2
-                elif s.channels > 6:
-                    p.channels = 6
-                if self.hid.normalize:
-                    p.gain_db = self._peak_gain(src, s, p.channels)
-            self.log(f"Audio track {n + 1}: {s.label()} → {p.describe()}")
-            plans.append(p)
+        plans, notes = plan_audio(self.job, info)
+        for note in notes:
+            self.log(note)
+        for n, p in enumerate(plans):
+            if p.mode != "copy" and self.hid.normalize:
+                p.gain_db = self._peak_gain(src, p.stream, p.channels)
+            self.log(f"Audio track {n + 1}: {p.stream.label()} → {p.describe()}")
         if not plans:
             self.log("No audio track selected – the output will have no sound.")
         return plans
-
-    def _can_copy(self, s: Stream) -> bool:
-        c = self.adv.container
-        if c == "avi":
-            return s.codec in AVI_COPY
-        if c == "mp4":
-            return s.codec in MP4_COPY
-        return True
 
     def _peak_gain(self, src: str, s: Stream, channels: int) -> float:
         layout = {1: "mono", 2: "stereo"}.get(channels)
@@ -574,7 +634,7 @@ class Runner:
         frames = duration * float(ana.fps_out)
         target = job.size_mb * 1048576
         audio_bytes = sum(a.est_bytes(duration) for a in audio)
-        overhead = self._overhead(frames, len(audio), duration)
+        overhead = container_overhead(self.adv.container, frames, len(audio), duration)
         video_bytes = target - audio_bytes - overhead
         self.log(f"Target size: {fmt_size(target)}, audio: {fmt_size(audio_bytes)}, "
                  f"overhead: {fmt_size(overhead)}")
@@ -624,15 +684,6 @@ class Runner:
         if plan.mpeg_matrix:
             self.log("XviD uses the MPEG quantization matrix.")
         return plan
-
-    def _overhead(self, frames: float, n_audio: int, duration: float) -> float:
-        c = self.adv.container
-        if c == "avi":
-            # 24 bytes per video chunk + one audio chunk per frame and track, plus index.
-            return frames * 24 * (1 + n_audio) + 64 * 1024
-        if c == "mkv":
-            return frames * 12 * (1 + n_audio) + duration * 40 + 512 * 1024
-        return frames * 16 * (1 + n_audio) + 512 * 1024
 
     def _comptest(self, src: str, info: MediaInfo, ana: Analysis, width: int,
                   video_bytes: float, frames: float) -> float:

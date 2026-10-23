@@ -42,6 +42,8 @@ strings in the shipped binary.
   - Black-border autocrop.
   - AutoGK-style **compressibility test** that picks the largest width your size budget can
     really afford.
+- **Live bitrate estimate:** see the video bitrate your size, audio and container choices
+  leave for the encoder, before you add the job.
 - **Crop preview:** see the detected crop on real frames, scrub through the movie and drag the
   edges yourself.
 - **Audio:** keep the original track, or use MP3 (ABR/CBR), AAC or AC3. Up to two tracks,
