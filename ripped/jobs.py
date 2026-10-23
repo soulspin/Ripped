@@ -30,7 +30,7 @@ PRESETS: list[tuple[str, int]] = [
 ]
 DEFAULT_PRESET = 4  # 2 CD, just like AutoGK
 
-# Sizes that are split into 700 MB parts (as AutoGK does for 2/3 CD).
+# Presets that are split into 700 MB parts (as AutoGK does for 2/3 CD).
 SPLIT_SIZES = {1400: 2, 2100: 3}
 
 
@@ -141,7 +141,8 @@ class Job:
 
     @property
     def split_parts(self) -> int:
-        if self.size_mode == "quality":
+        # Only the 2 CD / 3 CD presets are split; a custom size is always one file.
+        if self.size_mode != "preset":
             return 1
         return SPLIT_SIZES.get(self.size_mb, 1)
 

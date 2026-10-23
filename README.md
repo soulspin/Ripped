@@ -36,7 +36,8 @@ strings in the shipped binary.
 - **XviD and x264** (libxvid / libx264). Two-pass for a target size, single pass for a
   target quality.
 - **Size presets in AutoGK style:** ¼–3 CD, ⅙–½ DVD-R, FAT32 max, DVD-R, DVD-R DL, or a custom
-  size in MB. 2 and 3 CD jobs are split into 700 MB parts at keyframes.
+  size in MB. The 2 and 3 CD presets are split into 700 MB parts at keyframes;
+  a custom size always gives one file.
 - **Automatic analysis:**
   - Interlace/telecine detection with IVTC or deinterlacing.
   - Black-border autocrop.
