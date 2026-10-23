@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>DVD and video to XviD / x264 – the AutoGK way, on modern Linux.</b><br>
-  Version 0.1
+  Version 0.1.1
 </p>
 
 <p align="center">

@@ -2,4 +2,4 @@
 
 APP_ID = "se.soulspin.Ripped"
 APP_NAME = "Ripped"
-VERSION = "0.1.0"
+VERSION = "0.1.1"
