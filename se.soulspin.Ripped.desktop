@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Ripped
+GenericName=Video Converter
+Comment=Convert DVDs and videos to XviD or x264 – a tribute to AutoGK
+Exec=ripped %f
+Icon=se.soulspin.Ripped
+Terminal=false
+Categories=AudioVideo;Video;AudioVideoEditing;GTK;
+Keywords=dvd;rip;xvid;x264;divx;avi;mkv;autogk;gordian;
+MimeType=video/x-matroska;video/mp4;video/x-msvideo;video/mpeg;video/mp2t;application/x-iso9660-image;
+StartupNotify=true

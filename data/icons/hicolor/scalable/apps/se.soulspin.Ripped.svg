@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#262a52"/>
+      <stop offset="1" stop-color="#120d24"/>
+    </linearGradient>
+    <radialGradient id="bgglow" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#7b3cff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#7b3cff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="silver" cx="0.4" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.55" stop-color="#c9cfdc"/>
+      <stop offset="1" stop-color="#7d8597"/>
+    </radialGradient>
+    <linearGradient id="irid" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00e5ff"/>
+      <stop offset="0.3" stop-color="#7c4dff"/>
+      <stop offset="0.55" stop-color="#ff3d9a"/>
+      <stop offset="0.8" stop-color="#ffd54f"/>
+      <stop offset="1" stop-color="#00e5ff"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="fire" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe066"/>
+      <stop offset="0.5" stop-color="#ff6a2b"/>
+      <stop offset="1" stop-color="#ff2d75"/>
+    </linearGradient>
+    <filter id="glow" x="-1" y="-0.2" width="3" height="1.4">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+    <filter id="shadow" x="-0.3" y="-0.3" width="1.6" height="1.6">
+      <feGaussianBlur stdDeviation="2.5"/>
+    </filter>
+    <clipPath id="left"><polygon points="-30,-30 62,-30 62,8 64.5,21 61,33 65,46 61.5,58 65.5,71 61.5,84 65,97 62,110 64,122 64,160 -30,160"/></clipPath>
+    <clipPath id="right"><polygon points="158,-30 62,-30 62,8 64.5,21 61,33 65,46 61.5,58 65.5,71 61.5,84 65,97 62,110 64,122 64,160 158,160"/></clipPath>
+    <clipPath id="discclip"><circle cx="64" cy="64" r="47"/></clipPath>
+    <g id="disc">
+      <circle cx="64" cy="64" r="45" fill="url(#silver)"/>
+      <circle cx="64" cy="64" r="45" fill="url(#irid)" opacity="0.6"/>
+      <g fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="0.8">
+        <circle cx="64" cy="64" r="40"/>
+        <circle cx="64" cy="64" r="34"/>
+        <circle cx="64" cy="64" r="28"/>
+        <circle cx="64" cy="64" r="22"/>
+      </g>
+      <path d="M64 19 A45 45 0 0 1 99 35 L64 64 Z" fill="url(#shine)" opacity="0.55"/>
+      <path d="M64 109 A45 45 0 0 1 29 93 L64 64 Z" fill="url(#shine)" opacity="0.35"/>
+      <circle cx="64" cy="64" r="15" fill="#d9dde6" opacity="0.55"/>
+      <circle cx="64" cy="64" r="15" fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="1"/>
+      <circle cx="64" cy="64" r="7.5" fill="#191634"/>
+      <circle cx="64" cy="64" r="45" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1"/>
+    </g>
+  </defs>
+
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#bg)"/>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#bgglow)"/>
+  <rect x="6.5" y="6.5" width="115" height="115" rx="27.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+
+  <g transform="rotate(32 64 64)">
+    <ellipse cx="64" cy="70" rx="44" ry="44" fill="#000" opacity="0.45" filter="url(#shadow)"/>
+    <!-- the tear: a glowing seam between the two halves -->
+    <g clip-path="url(#discclip)">
+      <polyline points="62,8 64.5,21 61,33 65,46 61.5,58 65.5,71 61.5,84 65,97 62,110 64,122" fill="none" stroke="url(#fire)" stroke-width="13" stroke-linejoin="round" filter="url(#glow)"/>
+      <polyline points="62,8 64.5,21 61,33 65,46 61.5,58 65.5,71 61.5,84 65,97 62,110 64,122" fill="none" stroke="url(#fire)" stroke-width="6" stroke-linejoin="round"/>
+    </g>
+    <g transform="translate(-5.5 -1.5)"><g clip-path="url(#left)"><use href="#disc"/></g></g>
+    <g transform="translate(5.5 1.5)"><g clip-path="url(#right)"><use href="#disc"/></g></g>
+    <g clip-path="url(#discclip)">
+      <polyline points="62,8 64.5,21 61,33 65,46 61.5,58 65.5,71 61.5,84 65,97 62,110 64,122" fill="none" stroke="#fff6d5" stroke-width="1.6" stroke-linejoin="round"/>
+    </g>
+  </g>
+</svg>

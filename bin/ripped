@@ -1,0 +1,4 @@
+#!/bin/sh
+# Runs Ripped straight from the source tree.
+HERE="$(dirname "$(readlink -f "$0")")"
+PYTHONPATH="$HERE/..${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m ripped "$@"

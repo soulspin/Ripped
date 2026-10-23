@@ -1,0 +1,14 @@
+__pycache__/
+*.py[co]
+
+# Local test material and encodes
+samples/
+*.avi
+*.mkv
+*.mp4
+*.mks
+
+# Reference material for the original AutoGK (not ours to redistribute)
+AutoGordianKnot*.exe
+autogk_*
+559efd*.jpg
